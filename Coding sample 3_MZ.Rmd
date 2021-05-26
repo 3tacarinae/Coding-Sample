@@ -1,0 +1,253 @@
+```{r}
+library(dplyr)
+library(ggplot2)
+library(xts)
+library(tidyr)
+library(ggthemr)
+```
+
+```{r}
+#Read data
+Load_raw <- read.csv('bge_hourly_load.csv')
+Temp_raw <- read.csv('bwi_daily_temperatures.csv')
+
+#Group the Baltimore hourly data into daily data to calculate daily maximum load and daily total load 
+Load_daily <- group_by(Load_raw, date)
+Load_daily_summary <- summarise(Load_daily,
+                   load_max = max(mw),       
+                   load_sum = sum(mw)) 
+
+#Merge dataset
+Bal_daily <- merge(Temp_raw, Load_daily_summary, by = "date")
+Bal_daily 
+```
+
+```{r}
+#Plot the data to show the relationship
+ggplot(data = Bal_daily, aes(x = temperature_max, y = load_max)) + 
+    geom_point() +
+    labs(x = "Temperature", y = "Load", title = "Relationship between daily temperature and daily maximum load")+
+    theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+#Convert the date into time series
+Load_raw[["date"]] <- lubridate::ymd(Load_raw[["date"]])
+Temp_raw[["date"]] <- lubridate::ymd(Temp_raw[["date"]])
+
+#Select the data through 2020-02-28
+rownames(Bal_daily) <- Bal_daily$date 
+Bal_daily_xts <- as.xts(Bal_daily)
+Bal_before_covid_xts <- Bal_daily_xts["2011-01-01/2020-02-28"]
+Bal_before_covid <- data.frame(Bal_before_covid_xts)
+Bal_before_covid$temperature_max <- as.numeric(Bal_before_covid$temperature_max)
+Bal_before_covid$load_max <- as.numeric(Bal_before_covid$load_max)
+Bal_before_covid$load_sum <- as.numeric(Bal_before_covid$load_sum)
+
+#Plot the data to show the relationship between daily temperature and daily maximum load before COVID-19 shut down most of the U.S. 
+ggplot(data = Bal_before_covid, aes(x = temperature_max, y = load_max)) + 
+    geom_point() +
+    labs(x = "Temperature", y = "Load", title = "Relationship between temperature and maximum load (before covid)")+
+    theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+#Drop weekends
+Bal_before_covid$day <- strptime(Bal_before_covid[,1], "%Y-%m-%d")
+Bal_before_covid$weekday <- weekdays(Bal_before_covid$day)
+
+Bal_before_covid_workday <- subset(Bal_before_covid,Bal_before_covid$weekday != "Saturday" & Bal_before_covid$weekday != "Sunday")
+
+#Check holidays
+holidayNYSE(2011:2020)
+
+#Drop holidays
+drop.days <- c( '2011-01-01' ,'2011-01-02' ,'2011-04-22', '2011-07-04','2011-10-31','2011-11-24', '2011-12-25', '2011-12-26', '2012-01-01' ,'2012-01-02' ,'2012-04-06', '2012-07-04','2012-10-31', '2012-11-22', '2012-12-25', '2012-12-26', '2013-01-01' ,'2013-01-02' ,'2013-03-29', '2013-07-04','2013-10-31', '2013-11-28', '2013-12-25', '2013-12-26', '2014-01-01' ,'2014-01-02' ,'2014-04-18', '2014-07-04','2014-10-31', '2014-11-27', '2014-12-25', '2014-12-26', '2015-01-01' ,'2015-01-02' ,'2015-04-03', '2015-07-04','2015-10-31', '2015-11-26', '2015-12-25', '2015-12-26', '2016-01-01' ,'2016-01-02' ,'2016-03-25', '2016-07-04','2016-10-31', '2016-11-24', '2016-12-25', '2016-12-26', '2017-01-01' ,'2017-01-02' ,'2017-04-14', '2017-07-04','2017-10-31', '2017-11-23', '2017-12-25', '2017-12-26', '2018-01-01' ,'2018-01-02' ,'2018-03-30', '2018-07-04', '2018-10-31','2018-11-22', '2018-12-25', '2018-12-26', '2019-01-01' ,'2019-01-02' ,'2019-04-19', '2019-07-04','2019-10-31', '2019-11-28', '2019-12-25', '2019-12-26', '2020-01-01' ,'2020-01-02' )
+Bal_before_covid_drop_holidays <- Bal_before_covid_workday[!(Bal_before_covid_workday$date %in% drop.days), ]
+
+#After dropping the holidays and weekend, plot the data to show the relationship
+ggplot(data = Bal_before_covid_drop_holidays, aes(x = temperature_max, y = load_max)) + 
+    geom_point() +
+    labs(x = "Temperature", y = "Load", title = "Relationship between temperature and maximum load (before covid)")+
+    theme(plot.title = element_text(hjust = 0.5)) +
+    geom_vline(aes(xintercept = 69), colour = "#BB0000")
+```
+```{r}
+#From the above data analysis, we can intuitively find that, when the temperature is lower than 69F, the relationship between electricity consumption and temperature is roughly monotonically decreasing - with the increase of temperature, the load gradually decreases. 
+
+#When the temperature is higher than 69F, the relationship between electricity consumption and temperature is roughly monotonically increasing. 
+
+#The absolute value of the slope temperature is higher than 69F is greater than it when the temperature is lower than 69F degrees -- that is, when the temperature is higher than 69F, the higher the temperature, the faster the electricity consumption increases.
+
+#After remove weekend and holidays, outliers become fewer, and the data is more concentrated.
+```
+
+```{r}
+#Select the data throught 2020-05-31
+Bal_include_covid_xts <- Bal_daily_xts["2011-01-01/2020-05-31"]
+Bal_include_covid <- data.frame(Bal_include_covid_xts)
+Bal_include_covid$temperature_max <- as.numeric(Bal_include_covid$temperature_max)
+Bal_include_covid$load_max <- as.numeric(Bal_include_covid$load_max)
+Bal_include_covid$load_sum <- as.numeric(Bal_include_covid$load_sum)
+
+#Drop weekends
+Bal_include_covid$day <- strptime(Bal_include_covid[,1], "%Y-%m-%d")
+Bal_include_covid$weekday <- weekdays(Bal_include_covid$day)
+
+Bal_include_covid_workday <- subset(Bal_include_covid,Bal_include_covid$weekday != "Saturday" & Bal_include_covid$weekday != "Sunday")
+
+#Drop holidays
+drop.days2 <- c( '2011-01-01' ,'2011-01-02' ,'2011-04-22', '2011-07-04','2011-10-31','2011-11-24', '2011-12-25', '2011-12-26', '2012-01-01' ,'2012-01-02' ,'2012-04-06', '2012-07-04','2012-10-31', '2012-11-22', '2012-12-25', '2012-12-26', '2013-01-01' ,'2013-01-02' ,'2013-03-29', '2013-07-04','2013-10-31', '2013-11-28', '2013-12-25', '2013-12-26', '2014-01-01' ,'2014-01-02' ,'2014-04-18', '2014-07-04','2014-10-31', '2014-11-27', '2014-12-25', '2014-12-26', '2015-01-01' ,'2015-01-02' ,'2015-04-03', '2015-07-04','2015-10-31', '2015-11-26', '2015-12-25', '2015-12-26', '2016-01-01' ,'2016-01-02' ,'2016-03-25', '2016-07-04','2016-10-31', '2016-11-24', '2016-12-25', '2016-12-26', '2017-01-01' ,'2017-01-02' ,'2017-04-14', '2017-07-04','2017-10-31', '2017-11-23', '2017-12-25', '2017-12-26', '2018-01-01' ,'2018-01-02' ,'2018-03-30', '2018-07-04', '2018-10-31','2018-11-22', '2018-12-25', '2018-12-26', '2019-01-01' ,'2019-01-02' ,'2019-04-19', '2019-07-04','2019-10-31', '2019-11-28', '2019-12-25', '2019-12-26', '2020-01-01' ,'2020-01-02','2020-04-10')
+Bal_include_covid_drop_holidays <- Bal_include_covid_workday[!(Bal_include_covid_workday$date %in% drop.days2), ]
+
+Bal_include_covid_drop_holidays[["date"]] <- lubridate::ymd(Bal_include_covid_drop_holidays[["date"]])
+
+#Create highlight dataset - March 2020, April 2020, and May 2020
+highlight = as.data.frame(as.xts(Bal_include_covid_drop_holidays)["2020-03-01/2020-05-31"])
+highlight$temperature_max <- as.numeric(highlight$temperature_max)
+highlight$load_max <- as.numeric(highlight$load_max)
+highlight$load_sum <- as.numeric(highlight$load_sum)
+
+#After dropping the holidays and weekend, plot the data to show the relationship with a highlight of March, April and May
+ggplot(data = Bal_include_covid_drop_holidays, aes(x = temperature_max, y = load_max)) + 
+    geom_point() +
+    labs(x = "Temperature", y = "Load", title = "Relationship between temperature and maximum load (covid)")+
+    theme(plot.title = element_text(hjust = 0.5)) +
+    geom_point(data = highlight, aes(x = temperature_max, y = load_max), colour="red")
+```
+```{r}
+#From the above data analysis, we can intuitively find that after COVID-19 shut down most of the U.S., load during the pandemic was significantly lower than in previous years for the same temperature.
+```
+
+```{r}
+#COVID-19 led to a noticeable decrease in electric demand.
+#This could because most sites in the U.S. were shut down, people work from home and the electricity demand for public facilities has significantly decreased, for example: school, company and mall.
+
+#Normalizing for weather is useful.
+#Cooler winters will increase the need for heating. Conversely, hotter summers will increase the demand for cooling. So it is useful to dig into the data from the temperature. 
+```
+
+```{r}
+#Group the temperature
+Bal_before_covid$group=paste0(ceiling(Bal_before_covid$temperature_max/2)*2-1,'-',ceiling(Bal_before_covid$temperature_max/2)*2)
+
+#Check the mean and standard deviation for pre-pandemic data
+Bal_before_covid_mean_sd <- Bal_before_covid %>% group_by(group) %>% summarise(mean = mean(load_sum), standard_deviation = sd(load_sum))
+Bal_before_covid_mean_sd
+```
+
+```{r}
+#Read pandemic (2020/03/01 - 2020/05/31) data
+Bal_covid_xts <- Bal_daily_xts["2020-03-01/2020-05-31"]
+Bal_covid <- data.frame(Bal_covid_xts)
+Bal_covid$temperature_max <- as.numeric(Bal_covid$temperature_max)
+Bal_covid$load_max <- as.numeric(Bal_covid$load_max)
+Bal_covid$load_sum <- as.numeric(Bal_covid$load_sum)
+
+#Group the temperature
+Bal_covid$group=paste0(ceiling(Bal_covid$temperature_max/2)*2-1,'-',ceiling(Bal_covid$temperature_max/2)*2)
+
+#Check the mean and standard deviation for pandemic data
+Bal_covid_mean_sd <- Bal_covid %>% group_by(group) %>% summarise(mean_covid = mean(load_sum), standard_deviation = sd(load_sum))
+Bal_covid_mean_sd
+```
+```{r}
+#Compare the mean value before and after the epidemic, grouped by temperature 
+graph_mean <- cbind(inner_join(Bal_covid_mean_sd, Bal_before_covid_mean_sd, by = "group")[1:2],inner_join(Bal_covid_mean_sd, Bal_before_covid_mean_sd, by = "group")[4])
+graph_mean
+```
+```{r}
+#Data visualization. We can intuitively find from the graphs that after the pandemic, the load is significantly lower than before the outbreak
+graph_mean_long <- gather(graph_mean, categories, load, mean_covid:mean)
+
+ggthemr('dust')
+ggplot(data = graph_mean_long, mapping = aes(x = group, y = load, fill = categories)) + 
+    geom_bar(stat = 'identity', position = 'dodge') +
+    coord_flip() +
+    labs(x = "Temperature group", y = "Load", title = "Mean value comparation between covid and pre-covid") +
+    theme(plot.title = element_text(hjust = 0.5))
+```
+```{r}
+#Then calculate the difference between load values compared to the expected load values (before pandemic - after pandemic)
+graph_mean$early_pandemic_difference <- (graph_mean$mean - graph_mean$mean_covid)
+graph_mean
+
+#Finally calculate the standard deviations (March-May 2020)
+Bal_covid_mean_sd <- Bal_covid %>% group_by(temperature_max) %>% summarise(standard_deviation_covid = sd(load_sum), mean_covid = mean(load_sum))
+
+#Calculate how many standard deviations from the means
+newdata <- merge(Bal_covid, Bal_covid_mean_sd, by = "temperature_max")
+
+Bal_covid_sd_from_means <- as.data.frame((newdata$load_sum - newdata$mean_covid)/newdata$standard_deviation_covid)
+names(Bal_covid_sd_from_means) <- c("sd_from_means")
+cbind(newdata,Bal_covid_sd_from_means)
+```
+
+```{r}
+#Read pandemic (2020/03/01 - 2021/02/28) data
+Bal_covid_xts2 <- Bal_daily_xts["2020-03-01/2021/02/28"]
+Bal_covid2 <- data.frame(Bal_covid_xts2)
+Bal_covid2$temperature_max <- as.numeric(Bal_covid2$temperature_max)
+Bal_covid2$load_max <- as.numeric(Bal_covid2$load_max)
+Bal_covid2$load_sum <- as.numeric(Bal_covid2$load_sum)
+Bal_covid2[order(Bal_covid2$temperature_max),]
+
+#Group the temperature
+Bal_covid2$group=paste0(ceiling(Bal_covid2$temperature_max/2)*2-1,'-',ceiling(Bal_covid2$temperature_max/2)*2)
+
+#Check the mean and standard deviation for -pandemic data
+Bal_covid2_mean_sd <- Bal_covid2 %>% group_by(group) %>% summarise(mean_covid = mean(load_sum), standard_deviation_covid = sd(load_sum))
+Bal_covid2_mean_sd
+```
+
+```{r}
+#Compare the mean value and the difference(before pandemic - after pandemic) before and after the epidemic, grouped by temperature 
+graph_mean2 <- cbind(inner_join(Bal_covid2_mean_sd, Bal_before_covid_mean_sd, by = "group")[1:2],inner_join(Bal_covid2_mean_sd, Bal_before_covid_mean_sd, by = "group")[4])
+
+graph_mean2$late_pandemic_difference <- (graph_mean2$mean - graph_mean2$mean_covid)
+
+#Join the difference from 4 and difference from 5
+graph_mean2 <- inner_join(graph_mean, graph_mean2, by = "group")[,-c(2,3,5,6)]
+graph_mean2
+```
+```{r}
+#Data visualization. It is clear that the difference between the report load and the predicted load based on temperature becomes smaller when the time horizon is extended to 2021.
+graph_mean_long2 <- gather(graph_mean2, categories, difference_value, early_pandemic_difference:late_pandemic_difference)
+
+ggplot(data = graph_mean_long2, mapping = aes(x = group, y = difference_value, fill = categories)) + 
+    geom_bar(stat = 'identity', position = 'dodge') +
+    coord_flip() +
+    labs(x = "Temperature group", y = "Difference value", title = "Mean value comparation between early pandemic and late pandemic") +
+    theme(plot.title = element_text(hjust = 0.5))
+```
+
+```{r}
+# Check the holidays before covid
+select.days <- c( '2011-01-01' ,'2011-01-02' ,'2011-04-22', '2011-07-04','2011-10-31','2011-11-24', '2011-12-25', '2011-12-26', '2012-01-01' ,'2012-01-02' ,'2012-04-06', '2012-07-04','2012-10-31', '2012-11-22', '2012-12-25', '2012-12-26', '2013-01-01' ,'2013-01-02' ,'2013-03-29', '2013-07-04','2013-10-31', '2013-11-28', '2013-12-25', '2013-12-26', '2014-01-01' ,'2014-01-02' ,'2014-04-18', '2014-07-04','2014-10-31', '2014-11-27', '2014-12-25', '2014-12-26', '2015-01-01' ,'2015-01-02' ,'2015-04-03', '2015-07-04','2015-10-31', '2015-11-26', '2015-12-25', '2015-12-26', '2016-01-01' ,'2016-01-02' ,'2016-03-25', '2016-07-04','2016-10-31', '2016-11-24', '2016-12-25', '2016-12-26', '2017-01-01' ,'2017-01-02' ,'2017-04-14', '2017-07-04','2017-10-31', '2017-11-23', '2017-12-25', '2017-12-26', '2018-01-01' ,'2018-01-02' ,'2018-03-30', '2018-07-04', '2018-10-31','2018-11-22', '2018-12-25', '2018-12-26', '2019-01-01' ,'2019-01-02' ,'2019-04-19', '2019-07-04','2019-10-31', '2019-11-28', '2019-12-25', '2019-12-26', '2020-01-01' ,'2020-01-02','2020-04-10', '2020-07-04', '2020-10-31','2020-11-26', '2020-12-25', '2020-12-26', '2021-01-01' ,'2021-01-02')
+Bal_holidays <- Bal_daily[(Bal_daily$date %in% select.days), ]
+Bal_holidays
+```
+
+
+```{r}
+#Create highlight dataset - holidays in pandemic. 
+select.days2 <- c('2020-04-10', '2020-07-04', '2020-10-31','2020-11-26', '2020-12-25', '2020-12-26', '2021-01-01' ,'2021-01-02')
+Bal_covid_holidays <- Bal_daily[(Bal_daily$date %in% select.days2), ]
+highlight2 <- Bal_covid_holidays
+
+#Plot the data to show the relationship. We can find that during the holidays, the load decreasing caused by COVID-19 was no longer noticeable 
+ggthemr_reset()
+
+ggplot(data = Bal_holidays, aes(x = temperature_max, y = load_max)) + 
+    geom_point() +
+    labs(x = "Temperature", y = "Load", title = "Relationship between temperature and maximum load (Holiday)") +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    geom_point(data = highlight2, aes(x = temperature_max, y = load_max), colour="red") 
+```
+```{r}
+#From the above analysis, it's worth noting that:
+
+#In the post-outbreak period, as U.S. softened lockdown measures, the reduction in load is no longer significant and the difference from historical data is decreasing.
+
+#During holidays, the decrease in load caused by the pandemic was not significant. It is also because most holidays are in the second half of the year when the U.S. softened lockdown measures.
+```
